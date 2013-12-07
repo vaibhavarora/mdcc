@@ -118,6 +118,24 @@ public class MDCCClient {
             	int concurrency1 = Integer.parseInt(concurrent);
             	loadData(fac, numKeys, concurrency1);
             	
+            } else if("bigLoad".equals(cmdArgs[0])){
+            	String numberKeys;
+            	if (cmd.hasOption("n")) {
+                    numberKeys = cmd.getOptionValue("n");
+                } else {
+                    System.out.println("Number of keys unspecified");
+                    continue;
+                }
+            	
+            	
+            	if (cmd.hasOption("silent")) {
+                    silent.compareAndSet(false, true);
+                }
+            	// Get the number of keys
+            	int numKeys = Integer.parseInt(numberKeys);
+            	
+            	bigLoad(fac, numKeys);
+            	
             } else if ("getr".equals(cmdArgs[0])) {
                 if (cmd.hasOption("c")) {
                     concurrency = Integer.parseInt(cmd.getOptionValue("c"));
@@ -351,6 +369,22 @@ public class MDCCClient {
                 System.out.println("Key " + key + " deleted");
             } else {
                 System.out.println(key + ": " + value);
+            }
+            txn.commit();
+        } catch (TransactionException e) {
+            System.out.println("Error: " + e.getMessage());
+        }
+    }
+    
+    private static void bigLoad(TransactionFactory fac, int numKeys) {
+        Transaction txn = fac.create();
+        try {
+        	txn.begin();
+        	
+        	for (int i = 0; i < numKeys; i++) {
+        		String key="row"+i;
+        		String value = "value"+i;
+        		txn.write(key, value.getBytes());
             }
             txn.commit();
         } catch (TransactionException e) {
