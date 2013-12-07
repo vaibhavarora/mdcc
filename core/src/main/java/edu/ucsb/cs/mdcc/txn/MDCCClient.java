@@ -94,6 +94,18 @@ public class MDCCClient {
                     continue;
                 }
                 blindWriteTransaction(fac, key, value);
+            } else if("load".equals(cmdArgs[0])){
+            	String numberKeys;
+            	if (cmd.hasOption("n")) {
+                    numberKeys = cmd.getOptionValue("n");
+                } else {
+                    System.out.println("Object key unspecified");
+                    continue;
+                }
+            	// Get the number of keys
+            	int numKeys = Integer.parseInt(numberKeys);
+            	loadData(fac, numKeys);
+            	
             } else if ("getr".equals(cmdArgs[0])) {
                 if (cmd.hasOption("c")) {
                     concurrency = Integer.parseInt(cmd.getOptionValue("c"));
@@ -327,6 +339,22 @@ public class MDCCClient {
                 System.out.println("Key " + key + " deleted");
             } else {
                 System.out.println(key + ": " + value);
+            }
+            txn.commit();
+        } catch (TransactionException e) {
+            System.out.println("Error: " + e.getMessage());
+        }
+    }
+    
+    private static void loadData(TransactionFactory fac, int numKeys) {
+        Transaction txn = fac.create();
+        try {
+            txn.begin();
+            String key, value;
+            for(int i=0;i < numKeys; i++){
+            	key = "row"+i;
+            	value = "val"+i;
+            	txn.write(key, value.getBytes());
             }
             txn.commit();
         } catch (TransactionException e) {
