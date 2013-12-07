@@ -109,6 +109,10 @@ public class MDCCClient {
                     System.out.println("No of threads unspecified");
                     continue;
                 }
+            	
+            	if (cmd.hasOption("silent")) {
+                    silent.compareAndSet(false, true);
+                }
             	// Get the number of keys
             	int numKeys = Integer.parseInt(numberKeys);
             	int concurrency1 = Integer.parseInt(concurrent);
