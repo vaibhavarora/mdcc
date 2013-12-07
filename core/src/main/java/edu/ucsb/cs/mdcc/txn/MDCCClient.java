@@ -95,16 +95,24 @@ public class MDCCClient {
                 }
                 blindWriteTransaction(fac, key, value);
             } else if("load".equals(cmdArgs[0])){
-            	String numberKeys;
+            	String numberKeys, concurrent;
             	if (cmd.hasOption("n")) {
                     numberKeys = cmd.getOptionValue("n");
                 } else {
-                    System.out.println("Object key unspecified");
+                    System.out.println("Number of keys unspecified");
+                    continue;
+                }
+            	
+            	if (cmd.hasOption("c")) {
+                    concurrent = cmd.getOptionValue("c");
+                } else {
+                    System.out.println("No of threads unspecified");
                     continue;
                 }
             	// Get the number of keys
             	int numKeys = Integer.parseInt(numberKeys);
-            	loadData(fac, numKeys);
+            	int concurrency1 = Integer.parseInt(concurrent);
+            	loadData(fac, numKeys, concurrency1);
             	
             } else if ("getr".equals(cmdArgs[0])) {
                 if (cmd.hasOption("c")) {
@@ -346,20 +354,52 @@ public class MDCCClient {
         }
     }
     
-    private static void loadData(TransactionFactory fac, int numKeys) {
-        Transaction txn = fac.create();
-        try {
-            txn.begin();
-            String key, value;
-            for(int i=0;i < numKeys; i++){
-            	key = "row"+i;
-            	value = "val"+i;
-            	txn.write(key, value.getBytes());
-            }
-            txn.commit();
-        } catch (TransactionException e) {
-            System.out.println("Error: " + e.getMessage());
+    private static void loadData(TransactionFactory fac, int numKeys, int concurrency) {
+        List<Future> futures = new ArrayList<Future>();
+
+        final List<String> keys = new ArrayList<String>();
+        for (int i = 0; i < numKeys; i++) {
+            keys.add("row" + i);
         }
+
+        int success = 0;
+        int failure = 0;
+        //Use concurrency threads
+        int requestsPerIndex = numKeys / concurrency;
+        //This is to ensure you always load at least the keys you need
+        if(numKeys % concurrency != 0){
+        	requestsPerIndex++;
+        }
+        IndexedWriteWorker[] workers = new IndexedWriteWorker[numKeys];
+        int index = 0;
+        for (int i = 0; i < concurrency; i++) {
+            workers[i] = new IndexedWriteWorker(index, fac, requestsPerIndex, numKeys, keys);
+            index+=requestsPerIndex;
+        }
+
+        long start = System.currentTimeMillis();
+        for (int i = 0; i < concurrency; i++) {
+            futures.add(exec.submit(workers[i]));
+        }
+
+        long time = 0L;
+        for (int i = 0; i < concurrency; i++) {
+            try {
+                futures.get(i).get();
+            } catch (Exception ignored) {
+            }
+            success += workers[i].success;
+            failure += workers[i].failure;
+            time += workers[i].timeElapsed;
+        }
+        long end = System.currentTimeMillis();
+
+        int total = success + failure;
+        System.out.println("\nSuccessful: " + success + "/" + total);
+        System.out.println("Failed: " + failure + "/" + total);
+        System.out.println("Time elapsed: " + (end - start) + "ms");
+        System.out.println("Throughput: " + total/((end - start)/1000.0) + " TPS");
+        System.out.println("Average latency: " + time/(double) total + "ms");
     }
 
     private static class IndexedReadWorker implements Runnable {
@@ -436,15 +476,15 @@ public class MDCCClient {
         }
 
         public void run() {
-            int baseKey = (index * keyCount) % keys.size();
+            int baseKey = index;
             for (int i = 0; i < requests; i++) {
-                int keyIndex = (baseKey + (i % keyCount)) % keys.size();
+                int keyIndex = (baseKey + i);
                 String key = keys.get(keyIndex);
                 Transaction txn = fac.create();
                 long start = System.currentTimeMillis();
                 try {
                     txn.begin();
-                    String value = "random_value_" + index + "_" + i + "_" + System.currentTimeMillis();
+                    String value = "random_value_" + index + "_" + i;
                     txn.write(key, value.getBytes());
                     txn.commit();
                     timeElapsed += (System.currentTimeMillis() - start);
